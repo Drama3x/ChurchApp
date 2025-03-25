@@ -1,0 +1,71 @@
+import React, { useState, useEffect } from "react";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getFirestore, collection, addDoc, query, orderBy, onSnapshot } from "firebase/firestore";
+import { initializeApp } from "firebase/app";
+
+// Firebase configuration
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID",
+};
+
+const app = initializeApp(firebaseConfig);
+const storage = getStorage(app);
+const db = getFirestore(app);
+
+export default function ChurchInfoApp() {
+  const [file, setFile] = useState(null);
+  const [fileURL, setFileURL] = useState("");
+  const [posts, setPosts] = useState([]);
+  const [postText, setPostText] = useState("");
+
+  useEffect(() => {
+    const q = query(collection(db, "posts"), orderBy("timestamp", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleFileChange = (e) => {
+    if (e.target.files[0]) {
+      setFile(e.target.files[0]);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!file) return;
+    const fileRef = ref(storage, `uploads/${file.name}`);
+    await uploadBytes(fileRef, file);
+    const url = await getDownloadURL(fileRef);
+    setFileURL(url);
+    await addDoc(collection(db, "posts"), { text: postText, media: url, timestamp: new Date() });
+  };
+
+  return (
+    <div className="p-4 flex flex-col items-center">
+      <h1 className="text-2xl font-bold mb-4">Church Information & Social Feed</h1>
+      <input type="text" placeholder="What's on your mind?" value={postText} onChange={(e) => setPostText(e.target.value)} className="mb-2 p-2 border" />
+      <input type="file" onChange={handleFileChange} className="mb-2" />
+      <button onClick={handleUpload} className="bg-blue-500 text-white p-2 rounded">
+        Post
+      </button>
+      <div className="mt-4 w-full max-w-md">
+        {posts.map(post => (
+          <div key={post.id} className="border p-2 mb-2">
+            <p>{post.text}</p>
+            {post.media && post.media.endsWith(".mp4") ? (
+              <video src={post.media} controls className="w-full" />
+            ) : post.media ? (
+              <img src={post.media} alt="Uploaded" className="w-full" />
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
